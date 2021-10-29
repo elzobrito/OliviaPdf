@@ -1,0 +1,20 @@
+{
+    "name": "elzobrito/force-download",
+    "description": "Elzo PDF",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Elzo Brito dos Santos Filho",
+            "email": "elzo.filho@etec.sp.gov.br"
+        }
+    ],
+    "require": {
+        "php": "^7.1",
+        "fpdf/fpdf": "^1.82"
+    },
+    "autoload": {
+        "psr-4": {
+            "Oliviapdf\\": "src"
+        }
+    }
+}
