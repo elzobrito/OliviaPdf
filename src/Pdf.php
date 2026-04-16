@@ -6,25 +6,25 @@ use Fpdf\Fpdf;
 
 class Pdf extends Fpdf
 {
-    var $B = 0;
-    var $I = 0;
-    var $U = 0;
-    var $HREF = '';
-    var $ALIGN = '';
+    public $B = 0;
+    public $I = 0;
+    public $U = 0;
+    public $HREF = '';
+    public $ALIGN = '';
 
-    var $widths;
-    var $aligns;
+    public $widths = [];
+    public $aligns = [];
 
     //Footer
-    var $autentication = null;
-    var $end_page = '/{nb}';
+    public $autentication = null;
+    public $end_page = '/{nb}';
 
     //Header
-    var $image_logo = null;
-    var $title = null;
-    var $title_config_array = null;
-    var $subtitle = null;
-    var $subtitle_config_array = null;
+    public $image_logo = null;
+    public $title = null;
+    public $title_config_array = null;
+    public $subtitle = null;
+    public $subtitle_config_array = null;
 
     function Circle($x, $y, $r, $style = 'D')
     {
@@ -87,22 +87,32 @@ class Pdf extends Fpdf
     function SetWidths($w)
     {
         //Set the array of column widths
-        $this->widths = $w;
+        $this->widths = is_array($w) ? array_values($w) : [];
     }
 
     function SetAligns($a)
     {
         //Set the array of column alignments
-        $this->aligns = $a;
+        $this->aligns = is_array($a) ? array_values($a) : [];
     }
 
     function Row($data, $no_border = null)
     {
+        if (empty($this->widths)) {
+            $this->Error('Column widths are not configured. Call SetWidths() before Row().');
+        }
+
+        $data = array_values($data);
         //Calculate the height of the row
         $nb = 0;
+        $columns = count($data);
 
-        for ($i = 0; $i < count($data); $i++)
-            $nb = max($nb, $this->NbLines($this->widths[$i], $data[$i]));
+        for ($i = 0; $i < $columns; $i++) {
+            $width = isset($this->widths[$i]) ? $this->widths[$i] : 0;
+            $text = $this->normalizeText($data[$i]);
+            $nb = max($nb, $this->NbLines($width, $text));
+            $data[$i] = $text;
+        }
         $h = 5 * $nb;
         //Issue a page break first if needed
         $this->CheckPageBreak($h);
@@ -113,8 +123,8 @@ class Pdf extends Fpdf
         // $this->SetFont('');
 
         $fill = false;
-        for ($i = 0; $i < count($data); $i++) {
-            $w = $this->widths[$i];
+        for ($i = 0; $i < $columns; $i++) {
+            $w = isset($this->widths[$i]) ? $this->widths[$i] : 0;
             $a = isset($this->aligns[$i]) ? $this->aligns[$i] : 'L';
             //Save the current position
             $x = $this->GetX();
@@ -143,11 +153,15 @@ class Pdf extends Fpdf
     function NbLines($w, $txt)
     {
         //Computes the number of lines a MultiCell of width w will take
+        if (!isset($this->CurrentFont['cw'])) {
+            $this->Error('No font has been set. Call SetFont() before printing rows.');
+        }
+
         $cw = &$this->CurrentFont['cw'];
         if ($w == 0)
             $w = $this->w - $this->rMargin - $this->x;
         $wmax = ($w - 2 * $this->cMargin) * 1000 / $this->FontSize;
-        $s = str_replace("\r", '', $txt);
+        $s = str_replace("\r", '', $this->normalizeText($txt));
         $nb = strlen($s);
         if ($nb > 0 and $s[$nb - 1] == "\n")
             $nb--;
@@ -168,7 +182,7 @@ class Pdf extends Fpdf
             }
             if ($c == ' ')
                 $sep = $i;
-            $l += $cw[$c];
+            $l += isset($cw[$c]) ? $cw[$c] : (isset($cw['?']) ? $cw['?'] : 0);
             if ($l > $wmax) {
                 if ($sep == -1) {
                     if ($i == $j)
@@ -188,20 +202,20 @@ class Pdf extends Fpdf
     function WriteHTML($html)
     {
         //HTML parser
-        $html = str_replace("\n", ' ', $html);
+        $html = str_replace("\n", ' ', (string) $html);
         $a = preg_split('/<(.*)>/U', $html, -1, PREG_SPLIT_DELIM_CAPTURE);
         foreach ($a as $i => $e) {
             if ($i % 2 == 0) {
                 //Text
                 if ($this->HREF)
-                    $this->PutLink($this->HREF, $e);
+                    $this->PutLink($this->HREF, $this->normalizeText($e));
                 elseif ($this->ALIGN == 'center')
-                    $this->Cell(0, 5, $e, 0, 1, 'C');
+                    $this->Cell(0, 5, $this->normalizeText($e), 0, 1, 'C');
                 else
-                    $this->Write(5, $e);
+                    $this->Write(5, $this->normalizeText($e));
             } else {
                 //Tag
-                if ($e[0] == '/')
+                if ($e !== '' && $e[0] == '/')
                     $this->CloseTag(strtoupper(substr($e, 1)));
                 else {
                     //Extract properties
@@ -224,14 +238,14 @@ class Pdf extends Fpdf
         if ($tag == 'B' || $tag == 'I' || $tag == 'U')
             $this->SetStyle($tag, true);
         if ($tag == 'A')
-            $this->HREF = $prop['HREF'];
+            $this->HREF = isset($prop['HREF']) ? $prop['HREF'] : '';
         if ($tag == 'BR')
             $this->Ln(5);
         if ($tag == 'P')
-            $this->ALIGN = $prop['ALIGN'];
+            $this->ALIGN = isset($prop['ALIGN']) ? strtolower($prop['ALIGN']) : '';
         if ($tag == 'HR') {
             if (!empty($prop['WIDTH']))
-                $Width = $prop['WIDTH'];
+                $Width = (float) $prop['WIDTH'];
             else
                 $Width = $this->w - $this->lMargin - $this->rMargin;
             $this->Ln(2);
@@ -271,7 +285,7 @@ class Pdf extends Fpdf
         //Put a hyperlink
         $this->SetTextColor(0, 0, 255);
         $this->SetStyle('U', true);
-        $this->Write(5, $txt, $URL);
+        $this->Write(5, $this->normalizeText($txt), $URL);
         $this->SetStyle('U', false);
         $this->SetTextColor(0);
     }
@@ -304,17 +318,17 @@ class Pdf extends Fpdf
         $this->SetTextColor(110, 19, 28);
 
         $this->SetFont('Arial', 'B', 10);
-        if ($this->title_config_array != null)
+        if (is_array($this->title_config_array) && count($this->title_config_array) >= 3)
             $this->SetFont($this->title_config_array[0], $this->title_config_array[1], $this->title_config_array[2]);
             
         $this->SetXY(10, 37);
         if ($this->title)
-            $this->MultiCell(190, 7, iconv('utf-8', 'cp1252', $this->title), 0, 'C', 0);
+            $this->MultiCell(190, 7, $this->normalizeText($this->title), 0, 'C', 0);
 
-        if ($this->subtitle_config_array != null)
+        if (is_array($this->subtitle_config_array) && count($this->subtitle_config_array) >= 3)
             $this->SetFont($this->subtitle_config_array[0], $this->subtitle_config_array[1], $this->subtitle_config_array[2]);
         if ($this->subtitle)
-            $this->MultiCell(190, 7, iconv('utf-8', 'cp1252', $this->subtitle), 0, 'C', 0);
+            $this->MultiCell(190, 7, $this->normalizeText($this->subtitle), 0, 'C', 0);
         // Line break
         $this->Ln(5);
     }
@@ -326,14 +340,14 @@ class Pdf extends Fpdf
         // Arial italic 8
         $this->SetFont('Arial', 'I', 8);
         // Page number
-        $this->Cell(0, 10, iconv('utf-8', 'cp1252', 'Página ') . $this->PageNo() . '/{nb}', 0, 0, 'C');
+        $this->Cell(0, 10, $this->normalizeText('Página ') . $this->PageNo() . $this->end_page, 0, 0, 'C');
 
         //$this->end_page = $this->PageNo() . '/{nb}';
 
         if ($this->autentication != null) {
             $this->SetFont('Arial', '', 8);
             $this->SetXY(10, 10);
-            $this->TextWithRotation(205, 280, iconv('utf-8', 'cp1252', 'Autenticação:  ') . $this->autentication, 90, 0);
+            $this->TextWithRotation(205, 280, $this->normalizeText('Autenticação: ') . $this->normalizeText($this->autentication), 90, 0);
         }
     }
 
@@ -353,5 +367,35 @@ class Pdf extends Fpdf
         if ($this->ColorFlag)
             $s = 'q ' . $this->TextColor . ' ' . $s . ' Q';
         $this->_out($s);
+    }
+
+    protected function normalizeText($text)
+    {
+        if ($text === null) {
+            return '';
+        }
+
+        if (is_bool($text)) {
+            return $text ? '1' : '0';
+        }
+
+        if (is_scalar($text)) {
+            $text = (string) $text;
+        } else {
+            $text = json_encode($text);
+        }
+
+        if ($text === '') {
+            return '';
+        }
+
+        if (function_exists('iconv')) {
+            $converted = @iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $text);
+            if ($converted !== false) {
+                return $converted;
+            }
+        }
+
+        return utf8_decode($text);
     }
 }

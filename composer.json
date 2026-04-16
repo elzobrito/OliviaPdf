@@ -1,10 +1,6 @@
 {
     "name": "elzobrito/olivia-pdf",
-<<<<<<< HEAD
-    "description": "PDF php",
-=======
-    "description": "Elzo PDF",
->>>>>>> b08cc1f0b992b8712885dd775155390bd92d38f7
+    "description": "PDF library based on FPDF with Olivia extensions",
     "license": "MIT",
     "authors": [
         {
@@ -13,7 +9,7 @@
         }
     ],
     "require": {
-        "php": "^7.1",
+        "php": "^7.1 || ^8.0",
         "fpdf/fpdf": "^1.82"
     },
     "autoload": {
